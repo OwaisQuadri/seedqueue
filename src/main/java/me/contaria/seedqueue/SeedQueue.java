@@ -39,6 +39,7 @@ public class SeedQueue implements ClientModInitializer {
     private static final Queue<Runnable> CLIENT_TASKS = new LinkedBlockingQueue<>();
 
     private static final Queue<SeedQueueEntry> SEED_QUEUE = new LinkedBlockingQueue<>();
+    private static final Queue<SeedQueueEntry> SELECTED_QUEUE = new ArrayDeque<>();
     private static SeedQueueThread thread;
 
     public static final ThreadLocal<SeedQueueEntry> LOCAL_ENTRY = new ThreadLocal<>();
@@ -57,7 +58,8 @@ public class SeedQueue implements ClientModInitializer {
     public static boolean checkRamAllocation() {
         int allocatedMem = (int)(Runtime.getRuntime().maxMemory() / (1024 * 1024));
 
-        int recommendedMinRam = 1800 + (config.maxCapacity * 180);
+        int recommendedMinRam = 1800 + ((config.maxCapacity
+                + (config.isSelectionQueue ? config.rows * config.columns : 0)) * 180);
 
         if (allocatedMem < recommendedMinRam && config.maxCapacity != 0) {
             MinecraftClient.getInstance().openScreen(
@@ -82,6 +84,7 @@ public class SeedQueue implements ClientModInitializer {
         }
         synchronized (LOCK) {
             currentEntry = SEED_QUEUE.poll();
+            SELECTED_QUEUE.remove(currentEntry);
         }
         if (currentEntry == null) {
             return false;
@@ -102,6 +105,7 @@ public class SeedQueue implements ClientModInitializer {
             if (!SEED_QUEUE.remove(entry)) {
                 throw new IllegalStateException("SeedQueue selectedEntry is not part of the queue!");
             }
+            SELECTED_QUEUE.remove(entry);
             currentEntry = entry;
         }
         ping();
@@ -183,7 +187,50 @@ public class SeedQueue implements ClientModInitializer {
                 throw new IllegalArgumentException("Tried to discard a SeedQueueEntry that is not currently in queue!");
             }
         }
+        synchronized (LOCK) {
+            SELECTED_QUEUE.remove(entry);
+        }
         ping();
+    }
+
+    public static boolean isSelectionAccepted(SeedQueueEntry entry) {
+        if (!MinecraftClient.getInstance().isOnThread()) {
+            throw new IllegalStateException("Tried to select a SeedQueueEntry off-thread!");
+        }
+        synchronized (LOCK) {
+            if (!SEED_QUEUE.contains(entry) || SELECTED_QUEUE.contains(entry)
+                    || SELECTED_QUEUE.size() >= config.rows * config.columns) {
+                return false;
+            }
+            entry.lock();
+            SELECTED_QUEUE.add(entry);
+        }
+        ping();
+        return true;
+    }
+
+    public static boolean isSelected(SeedQueueEntry entry) {
+        synchronized (LOCK) {
+            return SELECTED_QUEUE.contains(entry);
+        }
+    }
+
+    public static int getSelectedCount() {
+        synchronized (LOCK) {
+            return SELECTED_QUEUE.size();
+        }
+    }
+
+    public static boolean isSelectedEntryPlayed() {
+        SeedQueueEntry entry;
+        synchronized (LOCK) {
+            entry = SELECTED_QUEUE.peek();
+        }
+        if (entry == null) {
+            return false;
+        }
+        playEntry(entry);
+        return true;
     }
 
     /**
@@ -200,7 +247,9 @@ public class SeedQueue implements ClientModInitializer {
      * @see SeedQueueConfig#maxCapacity
      */
     public static boolean isFull() {
-        return SEED_QUEUE.size() >= config.maxCapacity;
+        synchronized (LOCK) {
+            return SEED_QUEUE.size() - SELECTED_QUEUE.size() >= config.maxCapacity;
+        }
     }
 
     /**
@@ -384,6 +433,7 @@ public class SeedQueue implements ClientModInitializer {
                 currentEntry.discard();
             }
             currentEntry = null;
+            SELECTED_QUEUE.clear();
         }
 
         SEED_QUEUE.forEach(SeedQueueEntry::discard);
