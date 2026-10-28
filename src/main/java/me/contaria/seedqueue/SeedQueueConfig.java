@@ -97,6 +97,9 @@ public class SeedQueueConfig implements SpeedrunConfig {
     public boolean bypassWall = false;
 
     @Config.Category("wall")
+    public boolean isSelectionQueue = false;
+
+    @Config.Category("wall")
     public boolean smartSwitch = false;
 
     @Config.Category("wall")

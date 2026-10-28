@@ -44,7 +44,11 @@ public abstract class AtumMixin {
         }
         ModCompat.standardsettings$cache();
         if (SeedQueue.config.shouldUseWall()) {
-            if (SeedQueue.config.bypassWall) {
+            if (SeedQueue.config.isSelectionQueue && SeedQueue.isSelectedEntryPlayed()) {
+                SeedQueueSounds.play(SeedQueueSounds.BYPASS_WALL);
+                return;
+            }
+            if (!SeedQueue.config.isSelectionQueue && SeedQueue.config.bypassWall) {
                 Optional<SeedQueueEntry> nextSeedQueueEntry = SeedQueue.getEntryMatching(entry -> entry.isReady() && entry.isLocked());
                 if (nextSeedQueueEntry.isPresent()) {
                     SeedQueueSounds.play(SeedQueueSounds.BYPASS_WALL);

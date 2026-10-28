@@ -196,6 +196,12 @@ public class SeedQueueWallScreen extends Screen {
             this.drawAnimatedTexture(this.overlay, matrices, 0, 0, this.width, this.height);
         }
 
+        if (SeedQueue.config.isSelectionQueue) {
+            this.textRenderer.drawWithShadow(matrices,
+                    TextUtil.translatable("seedqueue.wall.selected", SeedQueue.getSelectedCount(),
+                            SeedQueue.config.rows * SeedQueue.config.columns), 4, 4, 0xFFFFFF);
+        }
+
         if (this.debugHud != null) {
             SeedQueueProfiler.swap("fps_graph");
             ((DebugHudAccessor) this.debugHud).seedQueue$drawMetricsData(matrices, this.client.getMetricsData(), 0, this.width / 2, true);
@@ -492,7 +498,7 @@ public class SeedQueueWallScreen extends Screen {
         for (SeedQueuePreview instance : this.getInstances()) {
             entries.remove(instance.getSeedQueueEntry());
         }
-        entries.removeIf(entry -> entry.getWorldGenerationProgressTracker() == null);
+        entries.removeIf(entry -> SeedQueue.isSelected(entry) || entry.getWorldGenerationProgressTracker() == null);
         if (SeedQueue.config.waitForPreviewSetup && !SeedQueue.config.isChunkmapResetting()) {
             entries.removeIf(entry -> !entry.hasWorldPreview());
         }
@@ -844,10 +850,17 @@ public class SeedQueueWallScreen extends Screen {
     }
 
     private void playNextLock() {
+        if (SeedQueue.config.isSelectionQueue) {
+            SeedQueue.isSelectedEntryPlayed();
+            return;
+        }
         SeedQueue.getEntryMatching(entry -> entry.isLocked() && entry.isReady()).ifPresent(this::playInstance);
     }
 
     private void scheduleAll() {
+        if (SeedQueue.config.isSelectionQueue) {
+            return;
+        }
         this.playSound(SeedQueueSounds.SCHEDULE_ALL);
         for (SeedQueueEntry entry : SeedQueue.getEntries()) {
             if (!entry.isLocked()) {
@@ -861,6 +874,16 @@ public class SeedQueueWallScreen extends Screen {
     }
 
     private void scheduleJoin(SeedQueuePreview instance) {
+        if (SeedQueue.config.isSelectionQueue) {
+            if (instance.hasRendered() && SeedQueue.isSelectionAccepted(instance.getSeedQueueEntry())) {
+                this.removePreview(instance);
+                instance.getSeedQueueEntry().mainPosition = -1;
+                instance.getSeedQueueEntry().setPreviewProperties(null);
+                instance.getSeedQueueEntry().discardFrameBuffer();
+                this.playSound(SeedQueueSounds.SCHEDULE_JOIN);
+            }
+            return;
+        }
         if (instance.hasRendered()) {
             this.lockInstance(instance);
             if (this.scheduleJoin(instance.getSeedQueueEntry())) {
